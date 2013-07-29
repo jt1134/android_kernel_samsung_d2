@@ -312,6 +312,10 @@ obj-$(CONFIG_MACH_M2_VZW)   += board-m2_vzw.o board-m2_vzw-gpiomux.o
 obj-$(CONFIG_MACH_APEXQ)    += board-mms-tsp.o board-apexq.o board-apexq-gpiomux.o board-apexq-battery.o board-8960-regulator.o board-8960-storage.o
 obj-$(CONFIG_MACH_APEXQ)    += board-apexq-camera.o board-apexq-display.o board-apexq-pmic.o 
 
+obj-$(CONFIG_MACH_EXPRESS) += board-express.o board-express-gpiomux.o board-express-display.o
+obj-$(CONFIG_MACH_EXPRESS) += board-express-camera.o board-8960-pmic.o board-8960-storage.o board-8960-regulator.o
+obj-$(CONFIG_MACH_EXPRESS) += board-express-battery.o
+
 obj-$(CONFIG_MACH_LGE) += lge/
 
 CFLAGS_msm_vibrator.o += -Idrivers/staging/android

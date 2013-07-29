@@ -2078,7 +2078,8 @@ static long msm_ioctl_server(struct file *fp, unsigned int cmd,
 		break;
 
 	case MSM_CAM_IOCTL_V4L2_EVT_NATIVE_FRONT_CMD:
-		sensor_native_control_front((void __user *)arg);
+		//sensor_native_control_front((void __user *)arg);
+		D("%S: MSM_CAM_IOCTL_V4L2_EVT_NATIVE_FRONT_CMD skipped bitch JT1134\n", __func__);
 		rc = 0;
 		break;
 
