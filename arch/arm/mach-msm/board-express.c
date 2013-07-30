@@ -4710,7 +4710,7 @@ static int sec_jack_get_adc_value(void)
 
 static struct sec_jack_platform_data sec_jack_data = {
 #if defined(CONFIG_SAMSUNG_JACK_GNDLDET)
-	.get_l_jack_state	= get_sec_l_jack_state,
+	.get_gnd_jack_state	= get_sec_l_jack_state,
 #endif
 	.get_det_jack_state	= get_sec_det_jack_state,
 	.get_send_key_state	= get_sec_send_key_state,
