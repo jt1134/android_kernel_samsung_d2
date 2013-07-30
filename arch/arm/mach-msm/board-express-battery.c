@@ -11,6 +11,7 @@
  * GNU General Public License for more details.
  *
  */
+
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 #include <linux/io.h>
@@ -25,6 +26,7 @@
 #include <mach/board.h>
 #include <mach/gpio.h>
 #include <mach/msm8960-gpio.h>
+#include <asm/system_info.h>
 
 #include "devices-msm8x60.h"
 #include "board-8960.h"
@@ -33,6 +35,7 @@
 #include <linux/battery/sec_battery.h>
 #include <linux/battery/sec_fuelgauge.h>
 #include <linux/battery/sec_charger.h>
+#include <linux/battery/charger/bq24157_charger.h>
 
 #define SEC_BATTERY_PMIC_NAME ""
 
