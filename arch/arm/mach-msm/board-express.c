@@ -170,6 +170,10 @@
 #include <linux/sec_jack.h>
 #endif
 
+#ifdef CONFIG_KEXEC_HARDBOOT
+#include <asm/kexec.h>
+#endif
+
 extern unsigned int system_rev;
 static struct platform_device msm_fm_platform_init = {
 	.name = "iris_fm",
@@ -1140,6 +1144,10 @@ static void __init msm8960_reserve(void)
 
 #ifdef CONFIG_ANDROID_RAM_CONSOLE
 	add_persistent_ram();
+#endif
+
+#ifdef CONFIG_KEXEC_HARDBOOT
+	memblock_remove(KEXEC_HB_PAGE_ADDR, SZ_4K);
 #endif
 }
 
@@ -5781,6 +5789,10 @@ static void __init samsung_express_init(void)
 				&msm8960_qup_spi_gsbi11_pdata;
 #endif
 
+#ifdef CONFIG_ANDROID_RAM_CONSOLE
+	add_ramconsole_devices();
+#endif
+
 #ifndef CONFIG_S5C73M3
 	spi_register_board_info(spi_board_info, ARRAY_SIZE(spi_board_info));
 #endif
@@ -5894,5 +5906,6 @@ MACHINE_START(EXPRESS, "SAMSUNG EXPRESS")
 	.init_machine = samsung_express_init,
 	.init_early = msm8960_allocate_memory_regions,
 	.init_very_early = msm8960_early_memory,
+	.restart = msm_restart,
 MACHINE_END
 #endif
