@@ -5848,7 +5848,7 @@ static void __init samsung_express_init(void)
 #if defined(CONFIG_VIDEO_MHL_V1) || defined(CONFIG_VIDEO_MHL_V2)
 	msm8960_mhl_gpio_init();
 #endif
-	//cypress_rev_check();
+	cypress_rev_check();
 	register_i2c_devices();
 	init_mxt_config_rev();
 	msm8960_init_fb();
