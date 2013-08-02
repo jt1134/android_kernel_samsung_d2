@@ -604,7 +604,7 @@ msm_rpm_regulator_init_data[] __devinitdata = {
 #if defined(CONFIG_MACH_M2) || defined(CONFIG_MACH_APEXQ) || defined(CONFIG_MACH_EXPRESS)
 	RPM_LDO(L16,	 0, 1, 0, 2800000, 3000000, NULL,      0, 0),
 	RPM_LDO(L17,	 0, 1, 0, 1800000, 3300000, NULL,      0, 0),
-#if defined(CONFIG_MACH_APEXQ)
+#if defined(CONFIG_MACH_APEXQ) || defined(CONFIG_MACH_EXPRESS)
 	RPM_LDO(L18,	 0, 1, 0, 1200000, 1500000, "8921_s4", 0, 0),
 #else
 	RPM_LDO(L18,	 0, 1, 0, 1300000, 1300000, "8921_s4", 0, 0),
