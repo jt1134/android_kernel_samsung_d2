@@ -31,7 +31,7 @@ struct mpu6050_config {
 	unsigned int irq_type;		/**< irq type */
 };
 
-struct ext_slave_descr *(*mpu6050_get_slave_descr)(void);
+struct ext_slave_descr *mpu6050_get_slave_descr(void);
 extern int mpu6050_set_odr(void *mlsl_handle,
 			  struct ext_slave_platform_data *pdata,
 			  struct mpu6050_config *config, long apply, long odr);

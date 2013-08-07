@@ -397,7 +397,7 @@ static struct miscdevice sensor_devfile = {
 #endif
 
 
-int accel_read_accel_raw_xyz(struct yas_vector *acc)
+int read_accel_raw_xyz(struct yas_vector *acc)
 {
 	struct yas_acc_data accel;
 	struct yas_acc_private_data *data = yas_acc_get_data();
@@ -469,9 +469,9 @@ static int accel_do_calibrate(int enable)
 	mutex_unlock(&data->data_mutex);
 
 	for (i = 0; i < 100; i++) {
-		err = accel_read_accel_raw_xyz(&data->cal_data);
+		err = read_accel_raw_xyz(&data->cal_data);
 		if (err < 0) {
-			pr_err("%s: accel_read_accel_raw_xyz() "
+			pr_err("%s: read_accel_raw_xyz() "
 				"failed in the %dth loop\n", __func__, i);
 			return err;
 		}
