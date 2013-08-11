@@ -442,7 +442,6 @@ eHalStatus csrClose(tpAniSirGlobal pMac)
 {
     eHalStatus status = eHAL_STATUS_SUCCESS;
 
-    csrStop(pMac);
     csrRoamClose(pMac);
     csrScanClose(pMac);
     csrLLClose(&pMac->roam.statsClientReqList);
@@ -565,7 +564,7 @@ eHalStatus csrStop(tpAniSirGlobal pMac)
 
     for( i = 0; i < CSR_ROAM_SESSION_MAX; i++ )
     {
-       csrRoamStateChange( pMac, eCSR_ROAMING_STATE_STOP ,i );
+       csrRoamStateChange( pMac, eCSR_ROAMING_STATE_STOP, i );
        pMac->roam.curSubState[i] = eCSR_ROAM_SUBSTATE_NONE;
     }
 
@@ -638,15 +637,17 @@ eHalStatus csrRoamOpen(tpAniSirGlobal pMac)
         }
         pMac->roam.WaitForKeyTimerInfo.pMac = pMac;
         pMac->roam.WaitForKeyTimerInfo.sessionId = CSR_SESSION_ID_INVALID;
-        status = palTimerAlloc(pMac->hHdd, &pMac->roam.hTimerWaitForKey, csrRoamWaitForKeyTimeOutHandler, 
+        status = vos_timer_init(&pMac->roam.hTimerWaitForKey, VOS_TIMER_TYPE_SW,
+                                csrRoamWaitForKeyTimeOutHandler,
                                 &pMac->roam.WaitForKeyTimerInfo);
-      if(!HAL_STATUS_SUCCESS(status))
+      if (!HAL_STATUS_SUCCESS(status))
       {
         smsLog(pMac, LOGE, FL("cannot allocate memory for WaitForKey time out timer"));
         break;
       }
-      status = palTimerAlloc(pMac->hHdd, &pMac->roam.tlStatsReqInfo.hTlStatsTimer, csrRoamTlStatsTimerHandler, pMac);
-      if(!HAL_STATUS_SUCCESS(status))
+      status = vos_timer_init(&pMac->roam.tlStatsReqInfo.hTlStatsTimer,
+                              VOS_TIMER_TYPE_SW, csrRoamTlStatsTimerHandler, pMac);
+      if (!HAL_STATUS_SUCCESS(status))
       {
          smsLog(pMac, LOGE, FL("cannot allocate memory for summary Statistics timer"));
          return eHAL_STATUS_FAILURE;
@@ -662,10 +663,10 @@ eHalStatus csrRoamClose(tpAniSirGlobal pMac)
     {
         csrRoamCloseSession(pMac, sessionId, TRUE, NULL, NULL);
     }
-    palTimerStop(pMac->hHdd, pMac->roam.hTimerWaitForKey);
-    palTimerFree(pMac->hHdd, pMac->roam.hTimerWaitForKey);
-    palTimerStop(pMac->hHdd, pMac->roam.tlStatsReqInfo.hTlStatsTimer);
-    palTimerFree(pMac->hHdd, pMac->roam.tlStatsReqInfo.hTlStatsTimer);
+    vos_timer_stop(&pMac->roam.hTimerWaitForKey);
+    vos_timer_destroy(&pMac->roam.hTimerWaitForKey);
+    vos_timer_stop(&pMac->roam.tlStatsReqInfo.hTlStatsTimer);
+    vos_timer_destroy(&pMac->roam.tlStatsReqInfo.hTlStatsTimer);
     return (eHAL_STATUS_SUCCESS);
 }
 
@@ -1595,7 +1596,6 @@ eHalStatus csrChangeDefaultConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pPa
                 pMac->roam.configParam.nImmediateRoamRssiDiff );
         pMac->roam.configParam.nRoamPrefer5GHz = pParam->nRoamPrefer5GHz;
         pMac->roam.configParam.nRoamIntraBand = pParam->nRoamIntraBand;
-        pMac->roam.configParam.isWESModeEnabled = pParam->isWESModeEnabled;
         pMac->roam.configParam.nProbes = pParam->nProbes;
         pMac->roam.configParam.nRoamScanHomeAwayTime = pParam->nRoamScanHomeAwayTime;
 #endif
@@ -1654,6 +1654,7 @@ eHalStatus csrChangeDefaultConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pPa
         pMac->roam.configParam.enableVhtFor24GHz = pParam->enableVhtFor24GHz;
 #endif
         pMac->roam.configParam.txLdpcEnable = pParam->enableTxLdpc;
+        pMac->roam.configParam.enableOxygenNwk = pParam->enableOxygenNwk;
     }
     
     return status;
@@ -1747,7 +1748,6 @@ eHalStatus csrGetConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pParam)
         pParam->nImmediateRoamRssiDiff = pMac->roam.configParam.nImmediateRoamRssiDiff;
         pParam->nRoamPrefer5GHz = pMac->roam.configParam.nRoamPrefer5GHz;
         pParam->nRoamIntraBand = pMac->roam.configParam.nRoamIntraBand;
-        pParam->isWESModeEnabled = pMac->roam.configParam.isWESModeEnabled;
         pParam->nProbes = pMac->roam.configParam.nProbes;
         pParam->nRoamScanHomeAwayTime = pMac->roam.configParam.nRoamScanHomeAwayTime;
 #endif
@@ -1776,6 +1776,8 @@ eHalStatus csrGetConfigParam(tpAniSirGlobal pMac, tCsrConfigParam *pParam)
 #endif
 
         pParam->enableTxLdpc = pMac->roam.configParam.txLdpcEnable;
+        pParam->enableOxygenNwk = pMac->roam.configParam.enableOxygenNwk;
+
         csrSetChannels(pMac, pParam);
 
         status = eHAL_STATUS_SUCCESS;
@@ -2410,10 +2412,10 @@ eHalStatus csrRoamCallCallback(tpAniSirGlobal pMac, tANI_U32 sessionId, tCsrRoam
             pRoamInfo->sessionId = (tANI_U8)sessionId;
         }
 
-        /* avoid holding the global lock when making the roaming callback , original change came 
-        from a raised CR (CR304874).  Since this callback is in HDD a potential deadlock 
-        is possible on other OS ports where the callback may need to take locks to protect 
-        HDD state 
+        /* avoid holding the global lock when making the roaming callback, original change came
+        from a raised CR (CR304874).  Since this callback is in HDD a potential deadlock
+        is possible on other OS ports where the callback may need to take locks to protect
+        HDD state
          UPDATE : revert this change but keep the comments here. Need to revisit as there are callbacks
          that may actually depend on the lock being held */
         // TODO: revisit: sme_ReleaseGlobalLock( &pMac->sme );
@@ -2659,7 +2661,7 @@ csrRoamIssueTkipCounterMeasures( tpAniSirGlobal pMac, tANI_U32 sessionId,
     }
     smsLog( pMac, LOG2, "CSR issuing tkip counter measures for Bssid = %02x-%02x-%02x-%02x-%02x-%02x, Enable = %d",
                   bssId[ 0 ], bssId[ 1 ], bssId[ 2 ],
-                  bssId[ 3 ], bssId[ 4 ], bssId[ 5 ] , bEnable);
+                  bssId[ 3 ], bssId[ 4 ], bssId[ 5 ], bEnable);
     status = csrSendMBTkipCounterMeasuresReqMsg( pMac, sessionId, bEnable, bssId );
     return (status);
 }
@@ -6152,7 +6154,7 @@ eHalStatus csrRoamIssueReassoc(tpAniSirGlobal pMac, tANI_U32 sessionId, tCsrRoam
 
 eHalStatus csrRoamEnqueuePreauth(tpAniSirGlobal pMac, tANI_U32 sessionId, tpSirBssDescription pBssDescription,
                                 eCsrRoamReason reason, tANI_BOOLEAN fImmediate)
-//                               , eCsrRoamReason reason, tANI_U32 roamId, tANI_BOOLEAN fImediate)
+//                              , eCsrRoamReason reason, tANI_U32 roamId, tANI_BOOLEAN fImediate)
 {
     eHalStatus status = eHAL_STATUS_SUCCESS;
     tSmeCmd *pCommand;
@@ -6841,7 +6843,12 @@ eHalStatus csrRoamSaveConnectedInfomation(tpAniSirGlobal pMac, tANI_U32 sessionI
         smsLog(pMac, LOGE, FL("  session %d not found "), sessionId);
         return eHAL_STATUS_FAILURE;
     }
-    
+
+    if(pConnectProfile->pAddIEAssoc)
+    {
+        palFreeMemory(pMac->hHdd, pConnectProfile->pAddIEAssoc);
+        pConnectProfile->pAddIEAssoc = NULL;
+    }
     palZeroMemory(pMac->hHdd, &pSession->connectedProfile, sizeof(tCsrRoamConnectedProfile));
     pConnectProfile->AuthType = pProfile->negotiatedAuthType;
         pConnectProfile->AuthInfo = pProfile->AuthType;
@@ -6856,11 +6863,7 @@ eHalStatus csrRoamSaveConnectedInfomation(tpAniSirGlobal pMac, tANI_U32 sessionI
     pConnectProfile->beaconInterval = pSirBssDesc->beaconInterval;
 
     palCopyMemory(pMac->hHdd, &pConnectProfile->Keys, &pProfile->Keys, sizeof(tCsrKeys));
-    if(pConnectProfile->pAddIEAssoc)
-    {
-        palFreeMemory(pMac->hHdd, pConnectProfile->pAddIEAssoc);
-        pConnectProfile->pAddIEAssoc = NULL;
-    }
+
     /* saving the addional IE`s like Hot spot indication element and extended capabilities */
     if(pProfile->nAddIEAssocLength)
     {
@@ -9813,14 +9816,14 @@ eHalStatus csrRoamStartRoamingTimer(tpAniSirGlobal pMac, tANI_U32 sessionId, tAN
     
     smsLog(pMac, LOG1, " csrScanStartRoamingTimer");
     pSession->roamingTimerInfo.sessionId = (tANI_U8)sessionId;
-    status = palTimerStart(pMac->hHdd, pSession->hTimerRoaming, interval, eANI_BOOLEAN_FALSE);
+    status = vos_timer_start(&pSession->hTimerRoaming, interval/PAL_TIMER_TO_MS_UNIT);
     
     return (status);
 }
 
 eHalStatus csrRoamStopRoamingTimer(tpAniSirGlobal pMac, tANI_U32 sessionId)
 {
-    return (palTimerStop(pMac->hHdd, pMac->roam.roamSession[sessionId].hTimerRoaming));
+    return (vos_timer_stop(&pMac->roam.roamSession[sessionId].hTimerRoaming));
 }
 
 void csrRoamWaitForKeyTimeOutHandler(void *pv)
@@ -9889,7 +9892,7 @@ eHalStatus csrRoamStartWaitForKeyTimer(tpAniSirGlobal pMac, tANI_U32 interval)
     }
 #endif
     smsLog(pMac, LOG1, " csrScanStartWaitForKeyTimer");
-    status = palTimerStart(pMac->hHdd, pMac->roam.hTimerWaitForKey, interval, eANI_BOOLEAN_FALSE);
+    status = vos_timer_start(&pMac->roam.hTimerWaitForKey, interval/PAL_TIMER_TO_MS_UNIT);
     
     return (status);
 }
@@ -9914,7 +9917,7 @@ eHalStatus csrRoamStopWaitForKeyTimer(tpAniSirGlobal pMac)
             NULL, eANI_BOOLEAN_FALSE);
     }
 #endif
-    return (palTimerStop(pMac->hHdd, pMac->roam.hTimerWaitForKey));
+    return (vos_timer_stop(&pMac->roam.hTimerWaitForKey));
 }
 
 void csrRoamIbssJoinTimerHandler(void *pv)
@@ -9950,13 +9953,13 @@ eHalStatus csrRoamStartIbssJoinTimer(tpAniSirGlobal pMac, tANI_U32 sessionId, tA
     
     smsLog(pMac, LOG1, " csrRoamStartIbssJoinTimer");
     pSession->ibssJoinTimerInfo.sessionId = (tANI_U8)sessionId;
-    status = palTimerStart(pMac->hHdd, pSession->hTimerIbssJoining, interval, eANI_BOOLEAN_FALSE);
+    status = vos_timer_start(&pSession->hTimerIbssJoining, interval/PAL_TIMER_TO_MS_UNIT);
     
     return (status);
 }
 eHalStatus csrRoamStopIbssJoinTimer(tpAniSirGlobal pMac, tANI_U32 sessionId)
 {
-    return (palTimerStop(pMac->hHdd, pMac->roam.roamSession[sessionId].hTimerIbssJoining));
+    return (vos_timer_stop(&pMac->roam.roamSession[sessionId].hTimerIbssJoining));
 }
 void csrRoamCompletion(tpAniSirGlobal pMac, tANI_U32 sessionId, tCsrRoamInfo *pRoamInfo, tSmeCmd *pCommand, 
                         eCsrRoamResult roamResult, tANI_BOOLEAN fSuccess)
@@ -12850,7 +12853,7 @@ eHalStatus csrSendAssocIndToUpperLayerCnfMsg(   tpAniSirGlobal pMac,
         // alternateChannelId
         *pBuf = 11;
         pBuf += sizeof (tANI_U8);
-        // Instead of copying roam Info, we just copy only WmmEnabled , RsnIE information
+        // Instead of copying roam Info, we just copy only WmmEnabled, RsnIE information
         //Wmm
         *pBuf = pAssocInd->wmmEnabledSta;
         pBuf += sizeof (tANI_U8);
@@ -12871,7 +12874,7 @@ eHalStatus csrSendAssocIndToUpperLayerCnfMsg(   tpAniSirGlobal pMac,
     return( status );
 }
 
-eHalStatus csrSendMBSetContextReqMsg( tpAniSirGlobal pMac, tANI_U32 sessionId ,
+eHalStatus csrSendMBSetContextReqMsg( tpAniSirGlobal pMac, tANI_U32 sessionId,
             tSirMacAddr peerMacAddr, tANI_U8 numKeys, tAniEdType edType, 
             tANI_BOOLEAN fUnicast, tAniKeyDirection aniKeyDirection,
             tANI_U8 keyId, tANI_U8 keyLength, tANI_U8 *pKey, tANI_U8 paeRole, 
@@ -13112,9 +13115,12 @@ eHalStatus csrSendMBStartBssReqMsg( tpAniSirGlobal pMac, tANI_U32 sessionId, eCs
         //txLdpcIniFeatureEnabled
         *pBuf = (tANI_U8)(tANI_U8)pMac->roam.configParam.txLdpcEnable;
         pBuf++;
-        
-        
-        // set RSN IE 
+
+        // prop IE enabled in .ini file
+        *pBuf = (tANI_U8)pMac->roam.configParam.enableOxygenNwk;
+        pBuf++;
+
+        // set RSN IE
         if( pParam->nRSNIELength > sizeof(pMsg->rsnIE.rsnIEdata) )
         {
             status = eHAL_STATUS_INVALID_PARAMETER;
@@ -13384,17 +13390,19 @@ eHalStatus csrRoamOpenSession(tpAniSirGlobal pMac,
             pSession->pContext = pContext;
             palCopyMemory( pMac->hHdd, &pSession->selfMacAddr, pSelfMacAddr, sizeof(tCsrBssid) );
             *pbSessionId = (tANI_U8)i;
-            status = palTimerAlloc(pMac->hHdd, &pSession->hTimerRoaming, csrRoamRoamingTimerHandler, 
+            status = vos_timer_init(&pSession->hTimerRoaming, VOS_TIMER_TYPE_SW,
+                                    csrRoamRoamingTimerHandler,
                                     &pSession->roamingTimerInfo);
-            if(!HAL_STATUS_SUCCESS(status))
+            if (!HAL_STATUS_SUCCESS(status))
             {
                 smsLog(pMac, LOGE, FL("cannot allocate memory for Roaming timer"));
                 break;
             }
 #ifdef FEATURE_WLAN_BTAMP_UT_RF
-            status = palTimerAlloc(pMac->hHdd, &pSession->hTimerJoinRetry, csrRoamJoinRetryTimerHandler, 
+            status = vos_timer_init(&pSession->hTimerJoinRetry, VOS_TIMER_TYPE_SW,
+                                    csrRoamJoinRetryTimerHandler,
                                     &pSession->joinRetryTimerInfo);
-            if(!HAL_STATUS_SUCCESS(status))
+            if (!HAL_STATUS_SUCCESS(status))
             {
                 smsLog(pMac, LOGE, FL("cannot allocate memory for joinretry timer"));
                 break;
@@ -13402,9 +13410,10 @@ eHalStatus csrRoamOpenSession(tpAniSirGlobal pMac,
 #endif
             pSession->ibssJoinTimerInfo.pMac = pMac;
             pSession->ibssJoinTimerInfo.sessionId = CSR_SESSION_ID_INVALID;
-            status = palTimerAlloc(pMac->hHdd, &pSession->hTimerIbssJoining, csrRoamIbssJoinTimerHandler, 
+            status = vos_timer_init(&pSession->hTimerIbssJoining, VOS_TIMER_TYPE_SW,
+                                    csrRoamIbssJoinTimerHandler,
                                     &pSession->ibssJoinTimerInfo);
-            if(!HAL_STATUS_SUCCESS(status))
+            if (!HAL_STATUS_SUCCESS(status))
             {
                 smsLog(pMac, LOGE, FL("cannot allocate memory for IbssJoining timer"));
                 break;
@@ -13591,11 +13600,11 @@ void csrCleanupSession(tpAniSirGlobal pMac, tANI_U32 sessionId)
         csrFreeConnectBssDesc(pMac, sessionId);
         csrRoamFreeConnectProfile( pMac, &pSession->connectedProfile );
         csrRoamFreeConnectedInfo ( pMac, &pSession->connectedInfo);
-        palTimerFree(pMac->hHdd, pSession->hTimerRoaming);
+        vos_timer_destroy(&pSession->hTimerRoaming);
 #ifdef FEATURE_WLAN_BTAMP_UT_RF
-        palTimerFree(pMac->hHdd, pSession->hTimerJoinRetry);
+        vos_timer_destroy(&pSession->hTimerJoinRetry);
 #endif
-        palTimerFree(pMac->hHdd, pSession->hTimerIbssJoining);
+        vos_timer_destroy(&pSession->hTimerIbssJoining);
         purgeSmeSessionCmdList(pMac, sessionId);
         purgeCsrSessionCmdList(pMac, sessionId);
         csrInitSession(pMac, sessionId);
@@ -13820,9 +13829,9 @@ void csrRoamTlStatsTimerHandler(void *pv)
       if(pMac->roam.tlStatsReqInfo.periodicity)
       {
          //start timer
-         status = palTimerStart(pMac->hHdd, pMac->roam.tlStatsReqInfo.hTlStatsTimer, 
-                                pMac->roam.tlStatsReqInfo.periodicity * PAL_TIMER_TO_MS_UNIT, eANI_BOOLEAN_FALSE);
-         if(!HAL_STATUS_SUCCESS(status))
+         status = vos_timer_start(&pMac->roam.tlStatsReqInfo.hTlStatsTimer,
+                                pMac->roam.tlStatsReqInfo.periodicity);
+         if (!HAL_STATUS_SUCCESS(status))
          {
             smsLog(pMac, LOGE, FL("csrRoamTlStatsTimerHandler:cannot start TlStatsTimer timer"));
             return;
@@ -13852,7 +13861,7 @@ void csrRoamPeStatsTimerHandler(void *pv)
       }
 
       // Free the entry
-      palFreeMemory(pMac->hHdd, pPeStatsReqListEntry);
+      vos_mem_free(pPeStatsReqListEntry);
       pPeStatsReqListEntry = NULL;
    }
    else
@@ -14433,6 +14442,28 @@ eHalStatus csrGetRoamRssi(tpAniSirGlobal pMac,
 }
 #endif
 
+/* ---------------------------------------------------------------------------
+    \fn csrGetTLSTAState
+    \helper function to get teh TL STA State whenever the function is called.
+
+    \param staId - The staID to be passed to the TL
+            to get the relevant TL STA State
+    \return the state as tANI_U16
+  ---------------------------------------------------------------------------*/
+tANI_U16 csrGetTLSTAState(tpAniSirGlobal pMac, tANI_U8 staId)
+{
+   WLANTL_STAStateType tlSTAState;
+   tlSTAState = WLANTL_STA_INIT;
+
+   //request TL for STA State
+   if ( !VOS_IS_STATUS_SUCCESS(WLANTL_GetSTAState(pMac->roam.gVosContext, staId, &tlSTAState)) )
+   {
+      smsLog(pMac, LOGE, FL("csrGetTLSTAState:couldn't get the STA state from TL"));
+   }
+
+   return tlSTAState;
+}
+
 eHalStatus csrGetStatistics(tpAniSirGlobal pMac, eCsrStatsRequesterType requesterId, 
                             tANI_U32 statsMask, 
                             tCsrStatsCallback callback, 
@@ -14494,8 +14525,8 @@ eHalStatus csrGetStatistics(tpAniSirGlobal pMac, eCsrStatsRequesterType requeste
          {
             if(pMac->roam.tlStatsReqInfo.timerRunning)
             {
-               status = palTimerStop(pMac->hHdd, pMac->roam.tlStatsReqInfo.hTlStatsTimer);
-               if(!HAL_STATUS_SUCCESS(status))
+               status = vos_timer_stop(&pMac->roam.tlStatsReqInfo.hTlStatsTimer);
+               if (!HAL_STATUS_SUCCESS(status))
                {
                   smsLog(pMac, LOGE, FL("csrGetStatistics:cannot stop TlStatsTimer timer"));
                   return eHAL_STATUS_FAILURE;
@@ -14607,9 +14638,9 @@ eHalStatus csrGetStatistics(tpAniSirGlobal pMac, eCsrStatsRequesterType requeste
                   if(pMac->roam.tlStatsReqInfo.periodicity)
                   {
                      //start timer
-                     status = palTimerStart(pMac->hHdd, pMac->roam.tlStatsReqInfo.hTlStatsTimer, 
-                                            pMac->roam.tlStatsReqInfo.periodicity * PAL_TIMER_TO_MS_UNIT, eANI_BOOLEAN_FALSE);
-                     if(!HAL_STATUS_SUCCESS(status))
+                     status = vos_timer_start(&pMac->roam.tlStatsReqInfo.hTlStatsTimer,
+                                            pMac->roam.tlStatsReqInfo.periodicity);
+                     if (!HAL_STATUS_SUCCESS(status))
                      {
                         smsLog(pMac, LOGE, FL("csrGetStatistics:cannot start TlStatsTimer timer"));
                         return eHAL_STATUS_FAILURE;
@@ -14796,7 +14827,7 @@ csrRoamScanOffloadPrepareProbeReqTemplate(tpAniSirGlobal pMac,
 
 
         nSirStatus = csrRoamScanOffloadPopulateMacHeader( pMac, pFrame, SIR_MAC_MGMT_FRAME,
-                        SIR_MAC_MGMT_PROBE_REQ, bssId ,selfMacAddr);
+                        SIR_MAC_MGMT_PROBE_REQ, bssId,selfMacAddr);
 
         if ( eSIR_SUCCESS != nSirStatus )
         {
@@ -15002,7 +15033,18 @@ eHalStatus csrRoamOffloadScan(tpAniSirGlobal pMac, tANI_U8 command, tANI_U8 reas
           }
           pRequestBuf->ValidChannelCount = num_channels;
     } else {
-       ChannelList = pMac->roam.validChannelList;
+       tANI_U32 host_channels = sizeof(pMac->roam.validChannelList);
+       if (HAL_STATUS_SUCCESS(csrGetCfgValidChannels(pMac, pMac->roam.validChannelList, &host_channels)))
+       {
+           ChannelList = pMac->roam.validChannelList;
+           pMac->roam.numValidChannels = host_channels;
+       }
+       else
+       {
+           VOS_TRACE(VOS_MODULE_ID_SME, VOS_TRACE_LEVEL_ERROR,
+                 "%s:Failed to get the valid channel list", __func__);
+           return eHAL_STATUS_FAILURE;
+       }
        for(i=0; i<pMac->roam.numValidChannels; i++)
           {
             if(!CSR_IS_CHANNEL_DFS(*ChannelList) && *ChannelList)
@@ -15204,7 +15246,7 @@ void csrRoamRemoveEntryFromPeStatsReqList(tpAniSirGlobal pMac, tCsrPeStatsReqInf
              * the entry from the linked list. Destroy the timer object 
              * and free the memory in the timer CB
              */
-            if( vosStatus == VOS_STATUS_SUCCESS )
+            if ( vosStatus == VOS_STATUS_SUCCESS )
             {
                /* the timer is successfully stopped */
                pTempStaEntry->timerRunning = FALSE;
@@ -15404,8 +15446,8 @@ eHalStatus csrRoamDeregStatisticsReq(tpAniSirGlobal pMac)
       {
          if(pMac->roam.tlStatsReqInfo.timerRunning)
          {
-            status = palTimerStop(pMac->hHdd, pMac->roam.tlStatsReqInfo.hTlStatsTimer);
-            if(!HAL_STATUS_SUCCESS(status))
+            status = vos_timer_stop(&pMac->roam.tlStatsReqInfo.hTlStatsTimer);
+            if (!HAL_STATUS_SUCCESS(status))
             {
                smsLog(pMac, LOGE, FL("csrRoamDeregStatisticsReq:cannot stop TlStatsTimer timer"));
                //we will continue
@@ -15888,9 +15930,8 @@ void csrRoamFTPreAuthRspProcessor( tHalHandle hHal, tpSirFTPreAuthRsp pFTPreAuth
     }
     /* Start the pre-auth reassoc interval timer with a period of 400ms. When this expires, 
      * actual transition from the current to handoff AP is triggered */
-    status = palTimerStart(pMac->hHdd, pMac->ft.ftSmeContext.preAuthReassocIntvlTimer,
-                                                            60 * PAL_TIMER_TO_MS_UNIT,
-                                                            eANI_BOOLEAN_FALSE);
+    status = vos_timer_start(&pMac->ft.ftSmeContext.preAuthReassocIntvlTimer,
+                                                            60);
     if (eHAL_STATUS_SUCCESS != status)
     {
         smsLog(pMac, LOGE, FL("Preauth reassoc interval timer start failed to start with status %d"), status);
@@ -15951,8 +15992,8 @@ eHalStatus csrRoamStartJoinRetryTimer(tpAniSirGlobal pMac, tANI_U32 sessionId, t
         pSession->maxRetryCount--;
         pSession->joinRetryTimerInfo.pMac = pMac;
         pSession->joinRetryTimerInfo.sessionId = (tANI_U8)sessionId;
-        status = palTimerStart(pMac->hHdd, pSession->hTimerJoinRetry, interval, eANI_BOOLEAN_FALSE);
-        if(!HAL_STATUS_SUCCESS(status))
+        status = vos_timer_start(&pSession->hTimerJoinRetry, interval/PAL_TIMER_TO_MS_UNIT);
+        if (!HAL_STATUS_SUCCESS(status))
         {
             smsLog(pMac, LOGE, FL(" fail to start timer status %s"), status);
         }
@@ -15970,7 +16011,7 @@ eHalStatus csrRoamStopJoinRetryTimer(tpAniSirGlobal pMac, tANI_U32 sessionId)
     smsLog(pMac, LOGE, " csrRoamStopJoinRetryTimer");
     if( CSR_IS_SESSION_VALID(pMac, sessionId) )
     {
-        return (palTimerStop(pMac->hHdd, pMac->roam.roamSession[sessionId].hTimerJoinRetry));
+        return (vos_timer_stop(&pMac->roam.roamSession[sessionId].hTimerJoinRetry));
     }
     
     return eHAL_STATUS_SUCCESS;
